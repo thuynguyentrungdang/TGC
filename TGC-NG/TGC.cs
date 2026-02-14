@@ -105,6 +105,9 @@ public class TGC(
             // Copy to filters
             CopyToFilter(itemClone, modTgcId);
             
+            // Add to filters
+            AddToFilter(modTgcId);
+            
             // Add to armband slot if specified
             AddToArmband(kvp.Key, armbandId);
             
@@ -185,6 +188,67 @@ public class TGC(
             {
                 if (id == itemClone)
                     conflictingItems.Add(modTgcId);
+            }
+        }
+    }
+
+    private void AddToFilter(MongoId modTgcId)
+    {
+        logger.Debug("addToFilters: " + modTgcId);
+        
+        if (ModItems[modTgcId].AddToThisItemsFilters != null)
+        {
+            List<Slot> modTgcItemFilters = GetFilters(modTgcId).allSlots;
+            List<MongoId> modTgcConflictingItems = GetFilters(modTgcId).conflictingItems;
+
+            foreach (KeyValuePair<string, List<MongoId>> modSlotName in ModItems[modTgcId].AddToThisItemsFilters!)
+            {
+                if (modSlotName.Key == "conflicts")
+                {
+                    modTgcConflictingItems.AddRange(ModItems[modTgcId].AddToThisItemsFilters!["conflicts"]);
+                }
+                else
+                {
+                    for (int a = 0; a < modTgcItemFilters.Capacity; a++)
+                    {
+                        if (modSlotName.Key != modTgcItemFilters[a].Name) 
+                            continue;
+                        
+                        HashSet<MongoId>? slotFilter = modTgcItemFilters[a].Properties!.Filters!.First().Filter;
+                        slotFilter!.UnionWith(ModItems[modTgcId].AddToThisItemsFilters![modSlotName.Key]);
+
+                        modTgcItemFilters[a].Properties!.Filters!.First().Filter = slotFilter;
+                    }
+                }
+            }
+        }
+        
+        if (ModItems[modTgcId].AddToExistingItemFilters != null)
+        {
+            foreach (KeyValuePair<string, List<MongoId>> modSlotName in ModItems[modTgcId].AddToExistingItemFilters!)
+            {
+                if (modSlotName.Key == "conflicts")
+                {
+                    foreach (MongoId conflictingItem in ModItems[modTgcId].AddToExistingItemFilters![modSlotName.Key])
+                    {
+                        List<MongoId> conflictingItems = GetFilters(conflictingItem).conflictingItems;
+                        
+                        conflictingItems.Add(modTgcId);
+                    }
+                }
+                else
+                {
+                    foreach (MongoId compatibleItem in ModItems[modTgcId].AddToExistingItemFilters![modSlotName.Key])
+                    {
+                        List<Slot> filters = GetFilters(compatibleItem).allSlots;
+
+                        foreach (var filter in filters)
+                        {
+                            if (modSlotName.Key == filter.Name)
+                                filter.Properties!.Filters!.First()!.Filter!.Add(modTgcId);
+                        }
+                    }
+                }
             }
         }
     }
