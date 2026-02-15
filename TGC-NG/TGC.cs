@@ -176,17 +176,29 @@ public class TGC(
                 if (filter.Properties == null ||
                     filter.Properties.Filters?.First().Filter == null)
                     continue;
-                
+                /*
                 foreach (MongoId id in filter.Properties.Filters.First().Filter)
                 {
-                    if (id == kvp.Key)
+                    if (id == itemClone)
                         filter.Properties.Filters.First().Filter.Add(modTgcId);
+                }*/
+                
+                var firstFilter = filter.Properties?.Filters?.FirstOrDefault();
+                
+                if (firstFilter?.Filter == null)
+                    continue;
+
+                var filterSet = firstFilter.Filter;
+
+                if (filterSet.Contains(itemClone))
+                {
+                    filterSet.Add(modTgcId);
                 }
             }
 
-            foreach (MongoId id in conflictingItems.ToList())
+            foreach (MongoId conflictId in conflictingItems.ToList())
             {
-                if (id == itemClone)
+                if (conflictId == itemClone)
                     conflictingItems.Add(modTgcId);
             }
         }
