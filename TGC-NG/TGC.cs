@@ -176,12 +176,6 @@ public class TGC(
                 if (filter.Properties == null ||
                     filter.Properties.Filters?.First().Filter == null)
                     continue;
-                /*
-                foreach (MongoId id in filter.Properties.Filters.First().Filter)
-                {
-                    if (id == itemClone)
-                        filter.Properties.Filters.First().Filter.Add(modTgcId);
-                }*/
                 
                 var firstFilter = filter.Properties?.Filters?.FirstOrDefault();
                 
