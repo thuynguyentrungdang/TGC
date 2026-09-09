@@ -1,46 +1,48 @@
 ﻿using System.Reflection;
 using System.Text.Json;
+using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
-using SPTarkov.Server.Core.Helpers;
+using SPTarkov.Server.Core.Helpers.Server;
 using SPTarkov.Server.Core.Models.Spt.Mod;
-using SPTarkov.Server.Core.Models.Utils;
-using SPTarkov.Server.Core.Services;
 using SPTarkov.Server.Core.Models.Common;
-using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
+using SPTarkov.Server.Core.Models.Enums;
+using SPTarkov.Server.Core.Models.Spt.Tables;
 using SPTarkov.Server.Core.Utils.Json;
 using TGC.Models;
 using Range = SemanticVersioning.Range;
 
 namespace TGC;
 
-public record ModMetadata : AbstractModMetadata
+public record ModMetadata : IModMetadata
 {
-    public override string ModGuid { get; init; } = "com.emilanderss0n.tgc";
-    public override string Name { get; init; } = "Tactical Gear Component";
-    public override string Author { get; init; } = "MonoPixel";
-    public override List<string>? Contributors { get; init; }
-    public override SemanticVersioning.Version Version { get; init; } = new("2.0.0");
-    public override SemanticVersioning.Range SptVersion { get; init; } = new("~4.0.0");
-    public override List<string>? Incompatibilities { get; init; }
-    public override Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; } = new()
+    public string ModGuid { get; init; } = "com.emilanderss0n.tgc";
+    public string Name { get; init; } = "Tactical Gear Component";
+    public string Author { get; init; } = "MonoPixel";
+    public List<string>? Contributors { get; init; }
+    public SemanticVersioning.Version Version { get; init; } = new("2.0.0");
+    public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
+    public bool HasPrepatcher { get; init; }
+    public List<string>? Incompatibilities { get; init; }
+    public Dictionary<string, SemanticVersioning.Range>? ModDependencies { get; init; } = new()
     {
-        { "com.wtt.commonlib", new Range("~2.0.0") }
+        { "com.wtt.commonlib", new Range("~3.0.0") }
     };
-    public override string? Url { get; init; } = "";
-    public override bool? IsBundleMod { get; init; } = true;
-    public override string? License { get; init; } = "MIT";
+    public string? Url { get; init; } = "";
+    public string? License { get; init; } = "MIT";
 }
 
-[Injectable(TypePriority = OnLoadOrder.PostDBModLoader + 10)]
+[Injectable(TypePriority = OnLoadOrder.TraderRegistration + 4)]
 public class TGC(
     ISptLogger<TGC> logger,
     WTTServerCommonLib.WTTServerCommonLib wttCommon,
     ModHelper modHelper,
-    DatabaseService databaseService) : IOnLoad
+    TemplateTable templateTable,
+    TradersTable tradersTable,
+    LocaleTable localeTable,
+    GlobalTable globalTable) : IOnLoad
 {
-    public required DatabaseService DatabaseService;
     public required ModPresets ModPresets;
     public required Dictionary<MongoId, ModItems> ModItems;
     public required ModConfig ModConfig;
@@ -50,15 +52,14 @@ public class TGC(
     public required Dictionary<MongoId, TemplateItem> Items;
     public required Dictionary<MongoId, Trader> Traders;
     public required Dictionary<MongoId, CustomizationItem> CustomizationItems;
-    public required Dictionary<string, LazyLoad<Dictionary<string, string>>> GlobalLocales;
+    public required Dictionary<string, LazyLoad<GlobalLocaleDictionary>> GlobalLocales;
     
-    public async Task OnLoad()
+    public async Task OnLoadAsync(CancellationToken cancellationToken)
     {
-        DatabaseService = databaseService;
-        Items = DatabaseService.GetItems();
-        Traders = DatabaseService.GetTraders();
-        CustomizationItems = DatabaseService.GetTemplates().Customization;
-        GlobalLocales = DatabaseService.GetLocales().Global;
+        Items = templateTable.Items;
+        Traders = tradersTable;
+        CustomizationItems = templateTable.Customization;
+        GlobalLocales = localeTable.Global;
         
         // Get your current assembly
         Assembly assembly = Assembly.GetExecutingAssembly();
@@ -285,7 +286,7 @@ public class TGC(
     {
         foreach (KeyValuePair<MongoId, Preset> kvp in ModPresets.ModPreset)
         {
-            DatabaseService.GetGlobals().ItemPresets[kvp.Key] = kvp.Value;
+            globalTable.ItemPresets[kvp.Key] = kvp.Value;
         }
     }
 
@@ -358,7 +359,7 @@ public class TGC(
 
     private void AddLocales(MongoId modTgcId)
     {
-        foreach ((string localeCode, LazyLoad<Dictionary<string, string>> lazyLocale) in GlobalLocales)
+        foreach ((string localeCode, LazyLoad<GlobalLocaleDictionary> lazyLocale) in GlobalLocales)
         {
             lazyLocale.AddTransformer(localeData =>
             {
