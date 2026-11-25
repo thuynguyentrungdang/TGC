@@ -1,0 +1,70 @@
+# Release on tag push (tags in this repo have no "v" prefix: 3.0.0, 3.0.1; "v3.0.1" also accepted).
+# Pure server C# mod: builds on the runner from public NuGet (SPTushonka.*, WTT-ServerCommonLib),
+# zips the SPT_Runtime/user/mods/TGC-NG tree (bundles are plain git files, ~650 MB) and publishes.
+# Release notes come from the "## [X.Y.Z]" section of CHANGELOG.md.
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]*'
+      - 'v[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve version and check it matches TGC.cs
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          CODE_VERSION=$(sed -nE 's/.*Version \{ get; init; \} = new\("([^"]+)"\).*/\1/p' TGC-NG/TGC.cs | head -1)
+          if [ "$VERSION" != "$CODE_VERSION" ]; then
+            echo "::error::Tag $TAG != ModMetadata version $CODE_VERSION in TGC-NG/TGC.cs"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { found=1; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::No '## [$VERSION]' section in CHANGELOG.md"
+            exit 1
+          fi
+          cat notes.md
+
+      - name: Build (Release stages the mod tree into ./staging)
+        run: dotnet build TGC-NG/TGC-NG.csproj -c Release -p:StagingRoot="$GITHUB_WORKSPACE/staging"
+
+      - name: Zip
+        run: |
+          test -f "staging/TGC-NG/SPT_Runtime/user/mods/TGC-NG/TGC-NG.dll"
+          test -d "staging/TGC-NG/SPT_Runtime/user/mods/TGC-NG/bundles"
+          cd staging/TGC-NG
+          zip -r -q "$GITHUB_WORKSPACE/TGC_${VERSION}.zip" SPT_Runtime
+          cd "$GITHUB_WORKSPACE"
+          ls -l "TGC_${VERSION}.zip"
+          sha256sum "TGC_${VERSION}.zip" | tee SHA256SUMS.txt
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FLAGS=""
+          case "$GITHUB_REF_NAME" in *-*) FLAGS="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "TGC_${VERSION}.zip" SHA256SUMS.txt \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md $FLAGS
